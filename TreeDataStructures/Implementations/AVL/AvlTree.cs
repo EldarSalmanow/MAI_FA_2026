@@ -9,31 +9,18 @@ public class AvlTree<TKey, TValue> : BinarySearchTreeBase<TKey, TValue, AvlNode<
 
     protected override void OnNodeAdded(AvlNode<TKey, TValue> newNode)
     {
-        // После обычной BST-вставки балансируем путь к корню.
         RebalanceUpward(newNode.Parent);
     }
 
     protected override void OnNodeRemoved(AvlNode<TKey, TValue>? parent, AvlNode<TKey, TValue>? child)
     {
-        // Не используем этот хук напрямую: балансируем в RemoveNode, где есть больше контекста.
     }
 
     protected override void RemoveNode(AvlNode<TKey, TValue> node)
     {
-        // Точка 1: бывший родитель удаляемого узла.
         var start1 = node.Parent;
-
-        // Точка 2: если удаляем узел с двумя детьми, может измениться поддерево
-        // у старого родителя successor (он может быть не на пути к root через start1).
-        AvlNode<TKey, TValue>? start2 = null;
-        if (node.Left != null && node.Right != null)
-        {
-            var successor = Minimum(node.Right);
-            if (successor.Parent != null && successor.Parent != node)
-            {
-                start2 = successor.Parent;
-            }
-        }
+        var successor = node.Left != null && node.Right != null ? Minimum(node.Right) : null;
+        var start2 = successor?.Parent != node ? successor?.Parent : null;
 
         base.RemoveNode(node);
 
@@ -42,6 +29,13 @@ public class AvlTree<TKey, TValue> : BinarySearchTreeBase<TKey, TValue, AvlNode<
         if (start2 != null && !ReferenceEquals(start2, start1))
         {
             RebalanceUpward(start2);
+        }
+
+        if (successor != null &&
+            !ReferenceEquals(successor, start1) &&
+            !ReferenceEquals(successor, start2))
+        {
+            RebalanceUpward(successor);
         }
     }
 
@@ -56,17 +50,17 @@ public class AvlTree<TKey, TValue> : BinarySearchTreeBase<TKey, TValue, AvlNode<
 
             if (balance > 1)
             {
-                // Left-Right case
-                if (BalanceFactor(current.Left!) < 0)
+                var left = current.Left!;
+                if (BalanceFactor(left) < 0)
                 {
-                    RotateLeft(current.Left!);
-                    UpdateHeight(current.Left!);
+                    RotateLeft(left);
+                    UpdateHeight(left);
+                    UpdateHeight(left.Parent!);
                 }
 
                 var oldRoot = current;
                 RotateRight(oldRoot);
 
-                // oldRoot спустился вниз, его новый parent - корень локального поддерева
                 UpdateHeight(oldRoot);
                 if (oldRoot.Parent != null)
                 {
@@ -80,11 +74,12 @@ public class AvlTree<TKey, TValue> : BinarySearchTreeBase<TKey, TValue, AvlNode<
             }
             else if (balance < -1)
             {
-                // Right-Left case
-                if (BalanceFactor(current.Right!) > 0)
+                var right = current.Right!;
+                if (BalanceFactor(right) > 0)
                 {
-                    RotateRight(current.Right!);
-                    UpdateHeight(current.Right!);
+                    RotateRight(right);
+                    UpdateHeight(right);
+                    UpdateHeight(right.Parent!);
                 }
 
                 var oldRoot = current;
