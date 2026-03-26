@@ -10,26 +10,23 @@ public class SplayTree<TKey, TValue> : BinarySearchTree<TKey, TValue>
     {
         var node = FindAndSplay(key, out var found);
         
-        if (!found)
+        if (found)
         {
-            base.Add(key, value);
-
+            node!.Value = value;
+            
             return;
         }
 
-        node!.Value = value;
-        
-        Splay(node);
+        base.Add(key, value);
     }
 
     protected override void OnNodeAdded(BstNode<TKey, TValue> newNode) => Splay(newNode);
 
     protected override void OnNodeRemoved(BstNode<TKey, TValue>? parent, BstNode<TKey, TValue>? child)
     {
-        if ((child ?? parent) is { } node)
-        {
-            Splay(node);
-        }
+        var target = child ?? parent;
+        
+        if (target != null) Splay(target);
     }
 
     public override bool ContainsKey(TKey key) => FindAndSplay(key, out var found) != null && found;
@@ -59,11 +56,11 @@ public class SplayTree<TKey, TValue> : BinarySearchTree<TKey, TValue>
             node = current;
 
             var cmp = Comparer.Compare(key, current.Key);
-            
+
             if (cmp == 0)
             {
                 found = true;
-                
+
                 Splay(current);
 
                 return current;
