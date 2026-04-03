@@ -459,7 +459,7 @@ public abstract class BinarySearchTreeBase<TKey, TValue, TNode>(IComparer<TKey>?
             _stack.Push(new Frame(node, depth, emit: true));
     }
 
-    private sealed class InOrderIterator(TNode? root) : TreeIterator(root)
+    private class InOrderIterator(TNode? root) : TreeIterator(root)
     {
         protected override TreeIterator Create(TNode? root) => new InOrderIterator(root);
 
@@ -473,7 +473,7 @@ public abstract class BinarySearchTreeBase<TKey, TValue, TNode>(IComparer<TKey>?
         }
     }
 
-    private sealed class PreOrderIterator(TNode? root) : TreeIterator(root)
+    private class PreOrderIterator(TNode? root) : TreeIterator(root)
     {
         protected override TreeIterator Create(TNode? root) => new PreOrderIterator(root);
 
@@ -487,7 +487,7 @@ public abstract class BinarySearchTreeBase<TKey, TValue, TNode>(IComparer<TKey>?
         }
     }
 
-    private sealed class PostOrderIterator(TNode? root) : TreeIterator(root)
+    private class PostOrderIterator(TNode? root) : TreeIterator(root)
     {
         protected override TreeIterator Create(TNode? root) => new PostOrderIterator(root);
 
@@ -501,7 +501,7 @@ public abstract class BinarySearchTreeBase<TKey, TValue, TNode>(IComparer<TKey>?
         }
     }
 
-    private sealed class InOrderReverseIterator(TNode? root) : TreeIterator(root)
+    private class InOrderReverseIterator(TNode? root) : TreeIterator(root)
     {
         protected override TreeIterator Create(TNode? root) => new InOrderReverseIterator(root);
 
@@ -515,7 +515,7 @@ public abstract class BinarySearchTreeBase<TKey, TValue, TNode>(IComparer<TKey>?
         }
     }
 
-    private sealed class PreOrderReverseIterator(TNode? root) : TreeIterator(root)
+    private class PreOrderReverseIterator(TNode? root) : TreeIterator(root)
     {
         protected override TreeIterator Create(TNode? root) => new PreOrderReverseIterator(root);
 

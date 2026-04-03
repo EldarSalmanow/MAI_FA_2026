@@ -14,7 +14,7 @@ public class SplayTree<TKey, TValue> : BinarySearchTree<TKey, TValue>
         }
         else
         {
-            base.Add(key, value); 
+            base.Add(key, value);
         }
     }
 
