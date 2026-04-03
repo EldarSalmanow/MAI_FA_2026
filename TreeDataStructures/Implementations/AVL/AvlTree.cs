@@ -9,7 +9,7 @@ public class AvlTree<TKey, TValue> : BinarySearchTreeBase<TKey, TValue, AvlNode<
         new(key, value);
 
     protected override void OnNodeAdded(AvlNode<TKey, TValue> newNode) => 
-        RebalanceUpward(newNode.Parent);
+        RebalanceUpward(newNode);
 
     protected override void OnNodeRemoved(AvlNode<TKey, TValue>? parent, AvlNode<TKey, TValue>? child) => 
         RebalanceUpward(parent);
@@ -21,7 +21,6 @@ public class AvlTree<TKey, TValue> : BinarySearchTreeBase<TKey, TValue, AvlNode<
             UpdateHeight(node);
             
             var balance = BalanceFactor(node);
-            var parent = node.Parent;
             var newNode = node;
 
             switch (balance)

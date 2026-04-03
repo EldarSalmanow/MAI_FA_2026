@@ -11,71 +11,65 @@ public class Treap<TKey, TValue> : BinarySearchTreeBase<TKey, TValue, TreapNode<
     protected virtual (TreapNode<TKey, TValue>?, TreapNode<TKey, TValue>?)
         Split(TreapNode<TKey, TValue>? node, TKey key)
     {
-        if (node is null) return (null, null);
+        if (node == null)
+        {
+            return (null, null);
+        }
 
-        return Comparer.Compare(node.Key, key) <= 0
-            ? SplitLeft(node, key)
-            : SplitRight(node, key);
-    }
-
-    private (TreapNode<TKey, TValue>?, TreapNode<TKey, TValue>?) SplitLeft(TreapNode<TKey, TValue> node, TKey key)
-    {
-        var (left, right) = Split(node.Right, key);
-
-        node.Right = left;
-        left?.Parent = node;
         node.Parent = null;
-        right?.Parent = null;
 
-        return (node, right);
-    }
+        if (Comparer.Compare(key, node.Key) < 0)
+        {
+            var (left, right) = Split(node.Left, key);
+            
+            node.Left = right;
+            right?.Parent = node;
 
-    private (TreapNode<TKey, TValue>?, TreapNode<TKey, TValue>?) SplitRight(TreapNode<TKey, TValue> node, TKey key)
-    {
-        var (left, right) = Split(node.Left, key);
+            return (left, node);
+        }
+        else
+        {
+            var (left, right) = Split(node.Right, key);
+            
+            node.Right = left;
+            left?.Parent = node;
 
-        node.Left = right;
-        right?.Parent = node;
-        node.Parent = null;
-        left?.Parent = null;
-
-        return (left, node);
+            return (node, right);
+        }
     }
 
     protected virtual TreapNode<TKey, TValue>? Merge(TreapNode<TKey, TValue>? left, TreapNode<TKey, TValue>? right)
     {
-        if (left is null)
+        if (left == null)
         {
-            right?.Parent = null;
-            
             return right;
         }
 
-        if (right is null)
+        if (right == null)
         {
-            left.Parent = null;
-            
             return left;
         }
 
-        if (left.Priority >= right.Priority)
+        TreapNode<TKey, TValue> root;
+
+        if (left.Priority > right.Priority)
         {
             left.Right = Merge(left.Right, right);
+            left.Right!.Parent = left;
             
-            if (left.Right is { } leftRight) leftRight.Parent = left;
+            root = left;
+        }
+        else
+        {
+            right.Left = Merge(left, right.Left);
+            right.Left!.Parent = right;
             
-            left.Parent = null;
-            
-            return left;
+            root = right;
         }
 
-        right.Left = Merge(left, right.Left);
-
-        if (right.Left is { } rightLeft) rightLeft.Parent = right;
+        root.Parent = null; 
         
-        right.Parent = null;
-        
-        return right;
+        return root;
     }
 
 
@@ -100,47 +94,33 @@ public class Treap<TKey, TValue> : BinarySearchTreeBase<TKey, TValue, TreapNode<
 
     public override bool Remove(TKey key)
     {
-        TreapNode<TKey, TValue>? current = Root, parent = null;
-
-        while (current != null)
+        if (FindNode(key) is not { } node)
         {
-            var cmp = Comparer.Compare(key, current.Key);
-
-            if (cmp == 0)
-            {
-                var replacement = Merge(current.Left, current.Right);
-
-                if (parent is null)
-                {
-                    Root = replacement;
-                }
-                else if (current == parent.Left)
-                {
-                    parent.Left = replacement;
-                }
-                else
-                {
-                    parent.Right = replacement;
-                }
-
-                replacement?.Parent = parent;
-
-                current.Left = null;
-                current.Right = null;
-                current.Parent = null;
-
-                Count--;
-                
-                OnNodeRemoved(parent, replacement);
-
-                return true;
-            }
-
-            parent = current;
-            
-            current = cmp < 0 ? current.Left : current.Right;
+            return false;
         }
 
-        return false;
+        var replacement = Merge(node.Left, node.Right);
+
+        replacement?.Parent = node.Parent;
+
+        if (node.Parent == null)
+        {
+            Root = replacement;
+        }
+        else if (node.IsLeftChild)
+        {
+            node.Parent.Left = replacement;
+        }
+        else
+        {
+            node.Parent.Right = replacement;
+        }
+
+        node.Left = node.Right = node.Parent = null;
+        
+        Count--;
+        OnNodeRemoved(node.Parent, replacement);
+
+        return true;
     }
 }
