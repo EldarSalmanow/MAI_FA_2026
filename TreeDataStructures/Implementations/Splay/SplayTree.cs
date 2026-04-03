@@ -8,75 +8,71 @@ public class SplayTree<TKey, TValue> : BinarySearchTree<TKey, TValue>
 {
     public override void Add(TKey key, TValue value)
     {
-        var node = FindAndSplay(key, out var found);
-        
-        if (found)
+        if (FindAndSplay(key) is { } node)
         {
-            node!.Value = value;
-            
-            return;
+            node.Value = value;
         }
-
-        base.Add(key, value);
+        else
+        {
+            base.Add(key, value); 
+        }
     }
 
+    public override bool Remove(TKey key)
+    {
+        return FindAndSplay(key) != null && base.Remove(key);
+    }
+
+    public override bool ContainsKey(TKey key) => FindAndSplay(key) != null;
+
+    public override bool TryGetValue(TKey key, [MaybeNullWhen(false)] out TValue value)
+    {
+        if (FindAndSplay(key) is { } node)
+        {
+            value = node.Value;
+            
+            return true;
+        }
+
+        value = default;
+        
+        return false;
+    }
+    
     protected override void OnNodeAdded(BstNode<TKey, TValue> newNode) => Splay(newNode);
 
     protected override void OnNodeRemoved(BstNode<TKey, TValue>? parent, BstNode<TKey, TValue>? child)
     {
-        var target = child ?? parent;
-        
-        if (target != null) Splay(target);
-    }
-
-    public override bool ContainsKey(TKey key) => FindAndSplay(key, out var found) != null && found;
-
-    public override bool TryGetValue(TKey key, [MaybeNullWhen(false)] out TValue value)
-    {
-        var node = FindAndSplay(key, out var found);
-        
-        if (!found || node == null)
+        if ((child ?? parent) is { } target)
         {
-            value = default;
-
-            return false;
+            Splay(target);
         }
-
-        value = node.Value;
-
-        return true;
     }
 
-    private BstNode<TKey, TValue>? FindAndSplay(TKey key, out bool found)
+    private BstNode<TKey, TValue>? FindAndSplay(TKey key)
     {
-        BstNode<TKey, TValue>? current = Root, node = null;
+        BstNode<TKey, TValue>? current = Root, parent = null;
 
         while (current != null)
         {
-            node = current;
-
             var cmp = Comparer.Compare(key, current.Key);
-
+            
             if (cmp == 0)
             {
-                found = true;
-
-                Splay(current);
-
-                return current;
+                break;
             }
 
+            parent = current;
+            
             current = cmp < 0 ? current.Left : current.Right;
         }
 
-        found = false;
-        
-        if (node != null)
+        if ((current ?? parent) is { } target) 
         {
-            Splay(node);
+            Splay(target);
         }
 
-        return node;
+        return current;
     }
 
     private void Splay(BstNode<TKey, TValue> node)
