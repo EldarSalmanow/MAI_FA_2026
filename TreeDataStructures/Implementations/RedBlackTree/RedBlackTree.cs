@@ -116,31 +116,41 @@ public class RedBlackTree<TKey, TValue> : BinarySearchTreeBase<TKey, TValue, RbN
         Root?.Color = RbColor.Black;
     }
 
-    private void FixDelete(RbNode<TKey, TValue>? node, RbNode<TKey, TValue>? p, bool isLeft)
+    private void FixDelete(RbNode<TKey, TValue>? node, RbNode<TKey, TValue>? parent, bool isLeft)
     {
         var current = node;
 
         while (current != Root && ColorOf(current) == RbColor.Black)
         {
-            if (p is null) break;
+            if (parent is null) break;
 
-            var sibling = isLeft ? p.Right : p.Left;
+            var sibling = isLeft ? parent.Right : parent.Left;
 
             if (ColorOf(sibling) == RbColor.Red)
             {
                 sibling!.Color = RbColor.Black;
-                p.Color = RbColor.Red;
-                if (isLeft) RotateLeft(p); else RotateRight(p);
-                sibling = isLeft ? p.Right : p.Left;
+                parent.Color = RbColor.Red;
+                
+                if (isLeft)
+                {
+                    RotateLeft(parent);
+                }
+                else
+                {
+                    RotateRight(parent);
+                }
+                
+                sibling = isLeft ? parent.Right : parent.Left;
             }
 
-            if (ColorOf(sibling?.Left) == RbColor.Black && ColorOf(sibling?.Right) == RbColor.Black)
+            if (ColorOf(sibling?.Left) == RbColor.Black 
+             && ColorOf(sibling?.Right) == RbColor.Black)
             {
                 sibling?.Color = RbColor.Red;
-                current = p;
-                p = current.Parent;
+                current = parent;
+                parent = current.Parent;
                 
-                if (p != null) isLeft = current.IsLeftChild; 
+                if (parent != null) isLeft = current.IsLeftChild; 
             }
             else
             {
@@ -154,20 +164,20 @@ public class RedBlackTree<TKey, TValue> : BinarySearchTreeBase<TKey, TValue, RbN
                         sibling.Color = RbColor.Red;
                         if (isLeft) RotateRight(sibling); else RotateLeft(sibling);
                     }
-                    sibling = isLeft ? p.Right : p.Left;
+                    sibling = isLeft ? parent.Right : parent.Left;
                 }
 
                 if (sibling != null)
                 {
-                    sibling.Color = p.Color;
+                    sibling.Color = parent.Color;
                     
                     var outer = isLeft ? sibling.Right : sibling.Left;
                     
                     outer?.Color = RbColor.Black;
                 }
                 
-                p.Color = RbColor.Black;
-                if (isLeft) RotateLeft(p); else RotateRight(p);
+                parent.Color = RbColor.Black;
+                if (isLeft) RotateLeft(parent); else RotateRight(parent);
 
                 current = Root;
                 
