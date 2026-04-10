@@ -122,7 +122,10 @@ public class RedBlackTree<TKey, TValue> : BinarySearchTreeBase<TKey, TValue, RbN
 
         while (current != Root && ColorOf(current) == RbColor.Black)
         {
-            if (parent is null) break;
+            if (parent is null)
+            {
+                break;
+            }
 
             var sibling = isLeft ? parent.Right : parent.Left;
 
@@ -149,8 +152,11 @@ public class RedBlackTree<TKey, TValue> : BinarySearchTreeBase<TKey, TValue, RbN
                 sibling?.Color = RbColor.Red;
                 current = parent;
                 parent = current.Parent;
-                
-                if (parent != null) isLeft = current.IsLeftChild; 
+
+                if (parent != null)
+                {
+                    isLeft = current.IsLeftChild;
+                }
             }
             else
             {
@@ -162,7 +168,15 @@ public class RedBlackTree<TKey, TValue> : BinarySearchTreeBase<TKey, TValue, RbN
                         inner?.Color = RbColor.Black;
 
                         sibling.Color = RbColor.Red;
-                        if (isLeft) RotateRight(sibling); else RotateLeft(sibling);
+                        
+                        if (isLeft)
+                        {
+                            RotateRight(sibling);
+                        }
+                        else
+                        {
+                            RotateLeft(sibling);
+                        }
                     }
                     sibling = isLeft ? parent.Right : parent.Left;
                 }
@@ -177,7 +191,15 @@ public class RedBlackTree<TKey, TValue> : BinarySearchTreeBase<TKey, TValue, RbN
                 }
                 
                 parent.Color = RbColor.Black;
-                if (isLeft) RotateLeft(parent); else RotateRight(parent);
+                
+                if (isLeft)
+                {
+                    RotateLeft(parent);
+                }
+                else
+                {
+                    RotateRight(parent);
+                }
 
                 current = Root;
                 
