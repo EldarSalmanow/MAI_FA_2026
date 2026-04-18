@@ -5,6 +5,14 @@ namespace Arithmetic.BigInt;
 
 public sealed class BetterBigInteger : IBigInteger
 {
+    private const int BitsPerWord = 32;
+    private const int KaratsubaThresholdWords = 32;
+    private const int FftThresholdWords = 256;
+
+    private static readonly IMultiplier SimpleMultiplierStrategy = new SimpleMultiplier();
+    private static readonly IMultiplier KaratsubaMultiplierStrategy = new KaratsubaMultiplier();
+    private static readonly IMultiplier FftMultiplierStrategy = new FftMultiplier();
+
     private int _signBit;
 
     private uint _smallValue; // Если число маленькое, храним его прямо в этом поле, а _data == null.
@@ -26,21 +34,20 @@ public sealed class BetterBigInteger : IBigInteger
     }
 
     public BetterBigInteger(IEnumerable<uint> digits, bool isNegative = false)
-        : this(digits is null ? throw new ArgumentNullException(nameof(digits)) : [.. digits], isNegative)
-    {
-    }
+        : this([..digits], isNegative) {}
 
     public BetterBigInteger(string value, int radix)
     {
         if (radix is < 2 or > 36)
         {
-            throw new ArgumentException("Radix must be between 2 and 36");
+            throw new ArgumentOutOfRangeException(nameof(radix), "Radix must be between 2 and 36");
         }
 
         ArgumentNullException.ThrowIfNull(value);
-        var trimmed = value.Trim();
+        
+        var trimmed = value.AsSpan().Trim();
 
-        if (trimmed.Length == 0)
+        if (trimmed.IsEmpty)
         {
             throw new FormatException("Input string was empty.");
         }
@@ -48,7 +55,7 @@ public sealed class BetterBigInteger : IBigInteger
         var start = 0;
         var isNegative = false;
 
-        if (trimmed[0] is '+' or '-')
+        if (trimmed[0] is ('+' or '-'))
         {
             isNegative = trimmed[0] == '-';
             start = 1;
@@ -62,21 +69,21 @@ public sealed class BetterBigInteger : IBigInteger
         var result = new BetterBigInteger([]);
         var radixBig = new BetterBigInteger([(uint)radix]);
 
-        for (var i = start; i < trimmed.Length; i++)
+        for (var i = start; i < trimmed.Length; ++i)
         {
             var digit = CharToDigit(trimmed[i]);
-            if (digit < 0 || digit >= radix)
+        
+            if (digit >= radix)
             {
                 throw new FormatException($"Invalid digit '{trimmed[i]}' for radix {radix}.");
             }
 
-            result = result * radixBig + new BetterBigInteger([(uint)digit]);
+            result = result * radixBig + new BetterBigInteger([digit]);
         }
 
         _smallValue = result._smallValue;
-        _data = result._data?.ToArray();
-        var resultDigits = result.GetDigits();
-        _signBit = isNegative && !IsZero(resultDigits) ? 1 : 0;
+        _data = result._data; 
+        _signBit = isNegative && !IsZero(result.GetDigits()) ? 1 : 0;
     }
 
     public ReadOnlySpan<uint> GetDigits()
@@ -155,8 +162,15 @@ public sealed class BetterBigInteger : IBigInteger
 
     public static BetterBigInteger operator *(BetterBigInteger a, BetterBigInteger b)
     {
-        IMultiplier strategy = new SimpleMultiplier();
-        
+        var maxWords = Math.Max(a.GetDigits().Length, b.GetDigits().Length);
+
+        var strategy = maxWords switch
+        {
+            >= FftThresholdWords => FftMultiplierStrategy,
+            >= KaratsubaThresholdWords => KaratsubaMultiplierStrategy,
+            _ => SimpleMultiplierStrategy
+        };
+
         return strategy.Multiply(a, b);
     }
 
@@ -208,11 +222,23 @@ public sealed class BetterBigInteger : IBigInteger
             return new BetterBigInteger(ShiftRightAbs(aDigits, shift));
         }
 
-        var divisorDigits = new uint[shift / 32 + 1];
-        divisorDigits[shift / 32] = 1u << (shift % 32);
-        var (quotient, remainder) = DivModAbs(aDigits, divisorDigits);
+        var wordShift = shift / BitsPerWord;
+        var bitShift = shift % BitsPerWord;
+        var hasRemainder = wordShift >= aDigits.Length;
+        
+        for (var i = 0; !hasRemainder && i < wordShift; ++i)
+        {
+            hasRemainder = aDigits[i] != 0;
+        }
+        
+        if (!hasRemainder && bitShift != 0)
+        {
+            hasRemainder = (aDigits[wordShift] & ((1u << bitShift) - 1)) != 0;
+        }
+        
+        var quotient = ShiftRightAbs(aDigits, shift);
 
-        if (!IsZero(remainder))
+        if (hasRemainder)
         {
             quotient = AddAbs(quotient, [1]);
         }
@@ -245,10 +271,11 @@ public sealed class BetterBigInteger : IBigInteger
     {
         if (radix is < 2 or > 36)
         {
-            throw new ArgumentException("Radix must be between 2 and 36");
+            throw new ArgumentOutOfRangeException(nameof(radix), "Radix must be between 2 and 36");
         }
 
         var digits = GetDigits();
+        
         if (IsZero(digits))
         {
             return "0";
@@ -256,17 +283,17 @@ public sealed class BetterBigInteger : IBigInteger
 
         var current = new BetterBigInteger(digits.ToArray());
         var rBig = new BetterBigInteger([(uint) radix]);
+    
         var result = new List<char>();
-        var zero = new BetterBigInteger([]);
 
-        while (current > zero)
+        while (!IsZero(current.GetDigits()))
         {
-            var r = current % rBig;
+            var (quotient, remainder) = DivMod(current, rBig);
+        
+            current = quotient;
 
-            current /= rBig;
-
-            var digit = r.GetDigits()[0];
-
+            var digit = remainder.GetDigits()[0];
+            
             result.Add(DigitToChar(digit));
         }
 
@@ -283,7 +310,7 @@ public sealed class BetterBigInteger : IBigInteger
     private static (BetterBigInteger Quotient, BetterBigInteger Remainder) DivMod(BetterBigInteger dividend, BetterBigInteger divisor)
     {
         var (qDigits, rDigits) = DivModAbs(dividend.GetDigits(), divisor.GetDigits());
-        
+
         return (
             new BetterBigInteger(qDigits, dividend.IsNegative ^ divisor.IsNegative),
             new BetterBigInteger(rDigits, dividend.IsNegative)
@@ -328,8 +355,10 @@ public sealed class BetterBigInteger : IBigInteger
             
             var diff = aDigit - bDigit - borrow;
             
-            if (diff < 0) {
-                diff += 0x100000000L;
+            if (diff < 0)
+            {
+                diff &= ~(1 << 31);
+                // diff += 0x100000000L; // 2^32
                 
                 borrow = 1;
             } else {
@@ -349,49 +378,43 @@ public sealed class BetterBigInteger : IBigInteger
             throw new DivideByZeroException();
         }
 
-        int cmp = CompareAbs(dividend, divisor);
-        if (cmp < 0) return ([], dividend.ToArray());
-        if (cmp == 0) return ([1],[]);
-
-        var q = new uint[dividend.Length];
-        uint[] r =[];
-
-        for (int i = dividend.Length - 1; i >= 0; i--)
+        switch (CompareAbs(dividend, divisor))
         {
-            uint word = dividend[i];
-            for (int bit = 31; bit >= 0; bit--)
-            {
-                // Эффективный сдвиг остатка и добавление нового бита без аллокаций BigInteger
-                uint bitVal = (word >> bit) & 1;
-                r = ShiftLeftAbs(r, 1);
-                if (bitVal != 0)
-                {
-                    r = AddAbs(r, [bitVal]);
-                }
-                r = TrimLeadingZeros(r);
+            case < 0:
+                return ([], dividend.ToArray());
+            case 0:
+                return ([1], []);
+        }
 
-                if (CompareAbs(r, divisor) >= 0)
+        var quotient = new uint[dividend.Length];
+        uint[] remainder = [];
+
+        for (var index = dividend.Length - 1; index >= 0; --index)
+        {
+            var word = dividend[index];
+
+            for (var bit = 31; bit >= 0; --bit)
+            {
+                remainder = ShiftLeftAbs(remainder, 1); 
+
+                if (((word >> bit) & 1) != 0)
                 {
-                    r = SubAbs(r, divisor); // SubAbs ожидает |r| >= |divisor|, что здесь выполняется
-                    r = TrimLeadingZeros(r);
-                    
-                    q[i] |= (1u << bit);
+                    remainder[0] |= 1; 
                 }
+                
+                remainder = TrimLeadingZeros(remainder);
+
+                if (CompareAbs(remainder, divisor) < 0)
+                {
+                    continue;
+                }
+
+                remainder = TrimLeadingZeros(SubAbs(remainder, divisor));
+                quotient[index] |= 1u << bit;
             }
         }
-        
-        return (q, r);
-    }
-    
-    private static uint[] TrimLeadingZeros(ReadOnlySpan<uint> digits)
-    {
-        var len = digits.Length;
-        while (len > 0 && digits[len - 1] == 0)
-        {
-            len--;
-        }
 
-        return len == digits.Length ? digits.ToArray() : digits[..len].ToArray();
+        return (quotient, remainder);
     }
     
     private static bool EqualsAbs(BetterBigInteger a, BetterBigInteger b)
@@ -438,22 +461,72 @@ public sealed class BetterBigInteger : IBigInteger
         return 0;
     }
     
+    private static uint[] ShiftLeftAbs(ReadOnlySpan<uint> digits, int shift)
+    {
+        var wordShift = shift / BitsPerWord;
+        var bitShift = shift % BitsPerWord;
+        
+        var result = new uint[digits.Length + wordShift + 1];
+
+        ulong carry = 0;
+
+        for (var index = 0; index < digits.Length; ++index)
+        {
+            var value = ((ulong) digits[index] << bitShift) | carry;
+            
+            result[index + wordShift] = (uint) value;
+            
+            carry = value >> BitsPerWord;
+        }
+
+        result[digits.Length + wordShift] = (uint)carry;
+
+        return result;
+    }
+
+    private static uint[] ShiftRightAbs(ReadOnlySpan<uint> digits, int shift)
+    {
+        var wordShift = shift / BitsPerWord;
+        var bitShift = shift % BitsPerWord;
+
+        if (wordShift >= digits.Length)
+        {
+            return [];
+        }
+
+        var result = new uint[digits.Length - wordShift];
+
+        uint carry = 0;
+
+        for (var index = digits.Length - 1; index >= wordShift; --index)
+        {
+            var current = digits[index];
+            
+            result[index - wordShift] = (current >> bitShift) | carry;
+            
+            carry = current << (BitsPerWord - bitShift);
+        }
+
+        return result;
+    }
+    
     private static BetterBigInteger ApplyOnBits(BetterBigInteger a, BetterBigInteger b, Func<uint, uint, uint> func)
     {
         ReadOnlySpan<uint> aDigits = a.GetDigits(), bDigits = b.GetDigits();
 
-        // +1 word keeps the sign-extension boundary for two's-complement operations.
         var length = Math.Max(aDigits.Length, bDigits.Length) + 1;
+
         var aWords = ToTwosComplementWords(aDigits, a.IsNegative, length);
         var bWords = ToTwosComplementWords(bDigits, b.IsNegative, length);
-        var digits = new uint[length];
+        
+        var resultWords = new uint[length];
 
         for (var i = 0; i < length; i++)
         {
-            digits[i] = func(aWords[i], bWords[i]);
+            resultWords[i] = func(aWords[i], bWords[i]);
         }
 
-        return FromTwosComplement(digits);
+        return FromTwosComplement(resultWords);
     }
 
     private static uint[] ToTwosComplementWords(ReadOnlySpan<uint> magnitude, bool isNegative, int length)
@@ -462,21 +535,20 @@ public sealed class BetterBigInteger : IBigInteger
 
         if (!isNegative)
         {
-            for (var i = 0; i < magnitude.Length && i < length; i++)
-            {
-                words[i] = magnitude[i];
-            }
+            magnitude.CopyTo(words);
 
             return words;
         }
 
         ulong carry = 1;
-        for (var i = 0; i < length; i++)
+        
+        for (var i = 0; i < length; ++i)
         {
             var src = i < magnitude.Length ? magnitude[i] : 0u;
-            var value = (ulong)~src + carry;
-            words[i] = (uint)value;
-            carry = value >> 32;
+            var value = ~src + carry;
+            
+            words[i] = (uint) value;
+            carry = value >> BitsPerWord;
         }
 
         return words;
@@ -489,22 +561,40 @@ public sealed class BetterBigInteger : IBigInteger
             return new BetterBigInteger([]);
         }
 
-        var isNegative = (words[^1] & 0x80000000u) != 0;
+        var isNegative = (words[^1] >> 31) == 1;
+        
         if (!isNegative)
         {
-            return new BetterBigInteger(TrimLeadingZeros(words));
+            return new BetterBigInteger(words.ToArray());
         }
 
         var magnitude = new uint[words.Length];
         ulong carry = 1;
-        for (var i = 0; i < words.Length; i++)
+        
+        for (var i = 0; i < words.Length; ++i)
         {
-            var value = (ulong)~words[i] + carry;
-            magnitude[i] = (uint)value;
-            carry = value >> 32;
+            var value = ~words[i] + carry;
+            
+            magnitude[i] = (uint) value;
+            
+            carry = value >> BitsPerWord;
         }
 
-        return new BetterBigInteger(TrimLeadingZeros(magnitude), true);
+        return new BetterBigInteger(magnitude, true);
+    }
+    
+    private static uint[] TrimLeadingZeros(ReadOnlySpan<uint> digits)
+    {
+        var length = digits.Length;
+
+        for (; length > 0 && digits[length - 1] == 0; --length) {}
+
+        if (length == digits.Length)
+        {
+            return digits.ToArray();
+        }
+        
+        return digits[..length].ToArray();
     }
     
     private static void Normalize(BetterBigInteger a)
@@ -537,67 +627,6 @@ public sealed class BetterBigInteger : IBigInteger
         
         a._smallValue = a._data[0];
         a._data = null;
-    }
-
-    private static uint[] ShiftLeftAbs(ReadOnlySpan<uint> digits, int shift)
-    {
-        var wordShift = shift / 32;
-        var bitShift = shift % 32;
-        var result = new uint[digits.Length + wordShift + 1];
-
-        if (bitShift == 0)
-        {
-            for (var i = 0; i < digits.Length; i++)
-            {
-                result[i + wordShift] = digits[i];
-            }
-
-            return result;
-        }
-
-        ulong carry = 0;
-        for (var i = 0; i < digits.Length; i++)
-        {
-            var value = ((ulong)digits[i] << bitShift) | carry;
-            result[i + wordShift] = (uint)value;
-            carry = value >> 32;
-        }
-
-        result[digits.Length + wordShift] = (uint)carry;
-        return result;
-    }
-
-    private static uint[] ShiftRightAbs(ReadOnlySpan<uint> digits, int shift)
-    {
-        var wordShift = shift / 32;
-        var bitShift = shift % 32;
-
-        if (wordShift >= digits.Length)
-        {
-            return [];
-        }
-
-        var result = new uint[digits.Length - wordShift];
-
-        if (bitShift == 0)
-        {
-            for (var i = wordShift; i < digits.Length; i++)
-            {
-                result[i - wordShift] = digits[i];
-            }
-
-            return result;
-        }
-
-        uint carry = 0;
-        for (var i = digits.Length - 1; i >= wordShift; i--)
-        {
-            var current = digits[i];
-            result[i - wordShift] = (current >> bitShift) | carry;
-            carry = current << (32 - bitShift);
-        }
-
-        return result;
     }
 
     private static uint CharToDigit(char symbol)

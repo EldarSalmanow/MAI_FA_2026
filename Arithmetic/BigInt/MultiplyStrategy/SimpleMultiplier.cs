@@ -17,9 +17,9 @@ internal class SimpleMultiplier : IMultiplier
 
             for (var j = 0; j < bDigits.Length; j++)
             {
-                var product = (ulong)aDigits[i] * bDigits[j] + result[i + j] + carry;
+                var product = (ulong) aDigits[i] * bDigits[j] + result[i + j] + carry;
 
-                result[i + j] = (uint)product;
+                result[i + j] = (uint) product;
                 carry = product >> 32;
             }
 
